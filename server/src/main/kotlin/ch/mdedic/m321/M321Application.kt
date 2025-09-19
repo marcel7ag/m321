@@ -7,5 +7,5 @@ import org.springframework.boot.runApplication
 class M321Application
 
 fun main(args: Array<String>) {
-	runApplication<M321Application>(*args)
+    runApplication<M321Application>(*args)
 }

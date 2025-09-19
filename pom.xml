@@ -10,7 +10,8 @@
 	</parent>
 	<groupId>ch.mdedic</groupId>
 	<artifactId>m321</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>dev-SNAPSHOT</version>
+	<packaging>pom</packaging>
 	<name>m321</name>
 	<description>m321 websocket</description>
 	<url/>
@@ -20,6 +21,11 @@
 	<developers>
 		<developer/>
 	</developers>
+	<modules>
+		<module>server</module>
+		<module>datamodel</module>
+		<module>client</module>
+	</modules>
 	<scm>
 		<connection/>
 		<developerConnection/>
@@ -30,6 +36,17 @@
 		<java.version>21</java.version>
 		<kotlin.version>1.9.25</kotlin.version>
 	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>ch.mdedic</groupId>
+				<artifactId>datamodel</artifactId>
+				<version>dev-SNAPSHOT</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
