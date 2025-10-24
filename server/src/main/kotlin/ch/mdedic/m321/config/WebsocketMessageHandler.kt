@@ -89,12 +89,13 @@ class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler 
         val content = messageData["content"] as? String ?: ""
         val recipientId = messageData["recipientId"] as? String
 
-        val chatMessage = MessageDTO(
-            id = java.util.UUID.randomUUID().toString(),
-            senderId = userId,
-            recipientId = recipientId ?: "all",
-            content = content,
-            timestamp = System.currentTimeMillis()
+        val chatMessage = mapOf(
+            "type" to "CHAT",
+            "id" to java.util.UUID.randomUUID().toString(),
+            "senderId" to userId,
+            "recipientId" to (recipientId ?: "all"),
+            "content" to content,
+            "timestamp" to System.currentTimeMillis()
         )
 
         log.info("Chat message from $userId: $content")
@@ -103,8 +104,8 @@ class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler 
         if (recipientId != null) {
             sendToUser(recipientId, chatMessage)
         } else {
-            // Broadcast to all users
-            broadcastMessage(chatMessage)
+            // Broadcast to all users EXCEPT the sender
+            broadcastMessage(chatMessage, excludeSession = session.id)
         }
     }
 
