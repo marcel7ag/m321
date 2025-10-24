@@ -1,33 +1,201 @@
 package ch.mdedic.m321.config
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import dtos.MessageDTO
+import dtos.MessageType
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.CloseStatus
+import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketMessage
 import org.springframework.web.socket.WebSocketSession
+import java.util.concurrent.ConcurrentHashMap
 
 @Component
 class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler {
     private val log = LoggerFactory.getLogger(this::class.java)
+    private val objectMapper = ObjectMapper()
+
+    // Store all active sessions
+    private val sessions = ConcurrentHashMap<String, WebSocketSession>()
+
+    // Store user information (sessionId -> userId)
+    private val userSessions = ConcurrentHashMap<String, String>()
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
         log.info("WebSocket connection established: ${session.id}")
+        sessions[session.id] = session
+
+        // Send welcome message
+        val welcomeMessage = mapOf(
+            "type" to "SYSTEM",
+            "message" to "Connected to WebSocket server",
+            "sessionId" to session.id
+        )
+        session.sendMessage(TextMessage(objectMapper.writeValueAsString(welcomeMessage)))
     }
 
     override fun handleMessage(session: WebSocketSession, message: WebSocketMessage<*>) {
-        log.info("Received message: ${message.payload}")
+        try {
+            val payload = message.payload.toString()
+            log.info("Received message from ${session.id}: $payload")
+
+            // Parse the incoming message
+            val messageData = objectMapper.readValue(payload, Map::class.java)
+            val messageType = messageData["type"] as? String ?: "CHAT"
+
+            when (messageType) {
+                "JOIN" -> handleJoinMessage(session, messageData)
+                "CHAT" -> handleChatMessage(session, messageData)
+                "TYPING" -> handleTypingMessage(session, messageData)
+                "LEAVE" -> handleLeaveMessage(session, messageData)
+                else -> {
+                    log.warn("Unknown message type: $messageType")
+                    sendErrorToSession(session, "Unknown message type: $messageType")
+                }
+            }
+        } catch (e: Exception) {
+            log.error("Error handling message", e)
+            sendErrorToSession(session, "Error processing message: ${e.message}")
+        }
+    }
+
+    private fun handleJoinMessage(session: WebSocketSession, messageData: Map<*, *>) {
+        val userId = messageData["userId"] as? String ?: "anonymous"
+        userSessions[session.id] = userId
+
+        log.info("User $userId joined with session ${session.id}")
+
+        // Broadcast to all other users
+        val joinNotification = mapOf(
+            "type" to "JOIN",
+            "userId" to userId,
+            "message" to "$userId has joined the chat",
+            "timestamp" to System.currentTimeMillis()
+        )
+        broadcastMessage(joinNotification, excludeSession = session.id)
+
+        // Send confirmation to the joining user
+        val confirmation = mapOf(
+            "type" to "JOIN_ACK",
+            "message" to "Successfully joined the chat",
+            "activeUsers" to userSessions.values.toList()
+        )
+        session.sendMessage(TextMessage(objectMapper.writeValueAsString(confirmation)))
+    }
+
+    private fun handleChatMessage(session: WebSocketSession, messageData: Map<*, *>) {
+        val userId = userSessions[session.id] ?: "anonymous"
+        val content = messageData["content"] as? String ?: ""
+        val recipientId = messageData["recipientId"] as? String
+
+        val chatMessage = MessageDTO(
+            id = java.util.UUID.randomUUID().toString(),
+            senderId = userId,
+            recipientId = recipientId ?: "all",
+            content = content,
+            timestamp = System.currentTimeMillis()
+        )
+
+        log.info("Chat message from $userId: $content")
+
+        // If recipientId is specified, send only to that user
+        if (recipientId != null) {
+            sendToUser(recipientId, chatMessage)
+        } else {
+            // Broadcast to all users
+            broadcastMessage(chatMessage)
+        }
+    }
+
+    private fun handleTypingMessage(session: WebSocketSession, messageData: Map<*, *>) {
+        val userId = userSessions[session.id] ?: "anonymous"
+
+        val typingNotification = mapOf(
+            "type" to "TYPING",
+            "userId" to userId,
+            "timestamp" to System.currentTimeMillis()
+        )
+
+        // Broadcast typing indicator to all other users
+        broadcastMessage(typingNotification, excludeSession = session.id)
+    }
+
+    private fun handleLeaveMessage(session: WebSocketSession, messageData: Map<*, *>) {
+        val userId = userSessions[session.id] ?: "anonymous"
+
+        val leaveNotification = mapOf(
+            "type" to "LEAVE",
+            "userId" to userId,
+            "message" to "$userId has left the chat",
+            "timestamp" to System.currentTimeMillis()
+        )
+
+        broadcastMessage(leaveNotification, excludeSession = session.id)
+        userSessions.remove(session.id)
+    }
+
+    private fun broadcastMessage(message: Any, excludeSession: String? = null) {
+        val jsonMessage = objectMapper.writeValueAsString(message)
+        sessions.values.forEach { session ->
+            if (session.id != excludeSession && session.isOpen) {
+                try {
+                    session.sendMessage(TextMessage(jsonMessage))
+                } catch (e: Exception) {
+                    log.error("Error sending message to session ${session.id}", e)
+                }
+            }
+        }
+    }
+
+    private fun sendToUser(userId: String, message: Any) {
+        val targetSessionId = userSessions.entries.find { it.value == userId }?.key
+        val targetSession = targetSessionId?.let { sessions[it] }
+
+        if (targetSession != null && targetSession.isOpen) {
+            val jsonMessage = objectMapper.writeValueAsString(message)
+            targetSession.sendMessage(TextMessage(jsonMessage))
+        } else {
+            log.warn("User $userId not found or session is closed")
+        }
+    }
+
+    private fun sendErrorToSession(session: WebSocketSession, errorMessage: String) {
+        val error = mapOf(
+            "type" to "ERROR",
+            "message" to errorMessage,
+            "timestamp" to System.currentTimeMillis()
+        )
+        try {
+            session.sendMessage(TextMessage(objectMapper.writeValueAsString(error)))
+        } catch (e: Exception) {
+            log.error("Error sending error message", e)
+        }
     }
 
     override fun handleTransportError(session: WebSocketSession, exception: Throwable) {
-        log.error("WebSocket transport error", exception)
+        log.error("WebSocket transport error for session ${session.id}", exception)
     }
 
     override fun afterConnectionClosed(session: WebSocketSession, closeStatus: CloseStatus) {
-        log.error("WebSocket connection closed: ${closeStatus.reason}", session.id)
+        log.info("WebSocket connection closed: ${session.id}, reason: ${closeStatus.reason}")
+
+        val userId = userSessions[session.id]
+        if (userId != null) {
+            val leaveNotification = mapOf(
+                "type" to "LEAVE",
+                "userId" to userId,
+                "message" to "$userId has disconnected",
+                "timestamp" to System.currentTimeMillis()
+            )
+            broadcastMessage(leaveNotification, excludeSession = session.id)
+        }
+
+        sessions.remove(session.id)
+        userSessions.remove(session.id)
     }
 
     override fun supportsPartialMessages(): Boolean {
         return false
     }
-
 }
