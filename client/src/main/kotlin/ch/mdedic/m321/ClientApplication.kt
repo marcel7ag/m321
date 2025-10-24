@@ -34,6 +34,12 @@ class ChatClientWindow : JFrame("WebSocket Chat Client") {
     private val objectMapper = jacksonObjectMapper()
     private val dateFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 
+    // Simple logger for debugging (not displayed in UI)
+    private fun log(message: String) {
+        // Uncomment the line below if you want to see debug logs in console
+        // println("[ClientApp] $message")
+    }
+
     init {
         setupUI()
         setupListeners()
@@ -54,15 +60,24 @@ class ChatClientWindow : JFrame("WebSocket Chat Client") {
         layout = BorderLayout(10, 10)
 
         // Top panel - Connection controls
-        val topPanel = JPanel(FlowLayout(FlowLayout.LEFT, 10, 10))
-        topPanel.border = BorderFactory.createEmptyBorder(5, 5, 5, 5)
+        val topPanel = JPanel()
+        topPanel.layout = BoxLayout(topPanel, BoxLayout.Y_AXIS)
+        topPanel.border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
 
-        topPanel.add(JLabel("Server:"))
-        topPanel.add(serverUrlField)
-        topPanel.add(JLabel("Username:"))
-        topPanel.add(usernameField)
-        topPanel.add(connectButton)
-        topPanel.add(disconnectButton)
+        // First row - Server and Username
+        val connectionPanel = JPanel(FlowLayout(FlowLayout.LEFT, 10, 5))
+        connectionPanel.add(JLabel("Server:"))
+        connectionPanel.add(serverUrlField)
+        connectionPanel.add(JLabel("Username:"))
+        connectionPanel.add(usernameField)
+
+        // Second row - Buttons
+        val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 10, 5))
+        buttonPanel.add(connectButton)
+        buttonPanel.add(disconnectButton)
+
+        topPanel.add(connectionPanel)
+        topPanel.add(buttonPanel)
 
         disconnectButton.isEnabled = false
 
@@ -307,7 +322,8 @@ class ChatClientWindow : JFrame("WebSocket Chat Client") {
                     appendMessage("[ERROR] $content")
                 }
                 else -> {
-                    appendMessage("[DEBUG] $jsonMessage")
+                    // Silently ignore unknown message types (log to console if debugging)
+                    log("Received unknown message type '$messageType': $jsonMessage")
                 }
             }
         } catch (e: Exception) {
