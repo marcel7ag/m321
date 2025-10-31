@@ -10,11 +10,12 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.swing.*
+import javax.swing.text.StyleConstants
 
 class ChatWindow : JFrame("Chat Client"), ChatWebSocketClient.ConnectionListener {
 
     // UI Components
-    private val messagesArea = JTextArea()
+    private val messagesArea = JTextPane()
     private val messageInput = JTextField()
     private val sendButton = JButton("Send")
     private val connectButton = JButton("Connect")
@@ -50,16 +51,9 @@ class ChatWindow : JFrame("Chat Client"), ChatWebSocketClient.ConnectionListener
 
     private fun setupUI() {
         layout = BorderLayout(10, 10)
-
-        // Top panel
         add(createTopPanel(), BorderLayout.NORTH)
-
-        // Center panel
         add(createMessagesPanel(), BorderLayout.CENTER)
-
-        // Bottom panel
         add(createInputPanel(), BorderLayout.SOUTH)
-
         updateConnectionState(false)
     }
 
@@ -68,14 +62,12 @@ class ChatWindow : JFrame("Chat Client"), ChatWebSocketClient.ConnectionListener
         topPanel.layout = BoxLayout(topPanel, BoxLayout.Y_AXIS)
         topPanel.border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
 
-        // Connection fields
         val connectionPanel = JPanel(FlowLayout(FlowLayout.LEFT, 10, 5))
         connectionPanel.add(JLabel("Server:"))
         connectionPanel.add(serverUrlField)
         connectionPanel.add(JLabel("Username:"))
         connectionPanel.add(usernameField)
 
-        // Buttons
         val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 10, 5))
         buttonPanel.add(connectButton)
         buttonPanel.add(disconnectButton)
@@ -91,8 +83,6 @@ class ChatWindow : JFrame("Chat Client"), ChatWebSocketClient.ConnectionListener
         panel.border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
 
         messagesArea.isEditable = false
-        messagesArea.lineWrap = true
-        messagesArea.wrapStyleWord = true
         messagesArea.font = Font("Monospaced", Font.PLAIN, 12)
         messagesArea.background = Color(245, 245, 245)
 
@@ -193,9 +183,25 @@ class ChatWindow : JFrame("Chat Client"), ChatWebSocketClient.ConnectionListener
     }
 
     private fun displayMessage(message: String) {
-        messagesArea.append("$message\n")
-        messagesArea.caretPosition = messagesArea.document.length
+        val doc = messagesArea.styledDocument
+        val style = messagesArea.addStyle("style", null)
+
+        when {
+            message.startsWith("[SYSTEM]") -> {
+                StyleConstants.setForeground(style, Color(100,100,100)) // dark gray
+            }
+            message.startsWith("[ERROR]") -> {
+                StyleConstants.setForeground(style, Color(178, 34, 34)) // dark red
+            }
+            else -> {
+                StyleConstants.setForeground(style, Color.BLACK)
+            }
+        }
+
+        doc.insertString(doc.length, "$message\n", style)
+        messagesArea.caretPosition = doc.length
     }
+
 
     private fun updateConnectionState(connected: Boolean) {
         connectButton.isEnabled = !connected
@@ -231,7 +237,7 @@ class ChatWindow : JFrame("Chat Client"), ChatWebSocketClient.ConnectionListener
 
     override fun onDisconnected(reason: String?) {
         SwingUtilities.invokeLater {
-            val message = if (reason != null) {
+            val message = if (reason != null && reason.isNotEmpty()) {
                 "[SYSTEM] Disconnected: $reason"
             } else {
                 "[SYSTEM] Disconnected from server"
