@@ -1,7 +1,6 @@
 package ch.mdedic.m321.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import dtos.MessageDTO
 import dtos.MessageType
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -12,7 +11,11 @@ import org.springframework.web.socket.WebSocketSession
 import java.util.concurrent.ConcurrentHashMap
 
 @Component
-class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler {
+class WebsocketMessageHandler(
+    // START
+    private val botCommandHandler: ch.mdedic.m321.bot.BotCommandHandler
+    // END
+) : org.springframework.web.socket.WebSocketHandler {
     private val log = LoggerFactory.getLogger(this::class.java)
     private val objectMapper = ObjectMapper()
 
@@ -28,7 +31,7 @@ class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler 
 
         // Send welcome message
         val welcomeMessage = mapOf(
-            "type" to "SYSTEM",
+            "type" to MessageType.SYSTEM.toString(),
             "message" to "Connected to WebSocket server",
             "sessionId" to session.id
         )
@@ -47,7 +50,6 @@ class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler 
             when (messageType) {
                 "JOIN" -> handleJoinMessage(session, messageData)
                 "CHAT" -> handleChatMessage(session, messageData)
-                "TYPING" -> handleTypingMessage(session, messageData)
                 "LEAVE" -> handleLeaveMessage(session, messageData)
                 else -> {
                     log.warn("Unknown message type: $messageType")
@@ -66,18 +68,18 @@ class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler 
 
         log.info("User $userId joined with session ${session.id}")
 
-        // Broadcast to all other users
+        // Broadcast join to all other users
         val joinNotification = mapOf(
-            "type" to "JOIN",
+            "type" to MessageType.JOIN.toString(),
             "userId" to userId,
             "message" to "$userId has joined the chat",
             "timestamp" to System.currentTimeMillis()
         )
         broadcastMessage(joinNotification, excludeSession = session.id)
 
-        // Send confirmation to the joining user
+        // Send confirmation of the joining user
         val confirmation = mapOf(
-            "type" to "JOIN_ACK",
+            "type" to MessageType.JOIN_ACK.toString(),
             "message" to "Successfully joined the chat",
             "activeUsers" to userSessions.values.toList()
         )
@@ -89,8 +91,21 @@ class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler 
         val content = messageData["content"] as? String ?: ""
         val recipientId = messageData["recipientId"] as? String
 
+        // START
+        // Check if this is a bot command
+        if (botCommandHandler.isBotCommand(content)) {
+            val botResponse = botCommandHandler.processCommand(session, userId, content)
+            sendToSession(session, mapOf(
+                "type" to MessageType.SYSTEM.toString(),
+                "message" to botResponse,
+                "timestamp" to System.currentTimeMillis()
+            ))
+            return
+        }
+        // END
+
         val chatMessage = mapOf(
-            "type" to "CHAT",
+            "type" to MessageType.CHAT.toString(),
             "id" to java.util.UUID.randomUUID().toString(),
             "senderId" to userId,
             "recipientId" to (recipientId ?: "all"),
@@ -109,24 +124,11 @@ class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler 
         }
     }
 
-    private fun handleTypingMessage(session: WebSocketSession, messageData: Map<*, *>) {
-        val userId = userSessions[session.id] ?: "anonymous"
-
-        val typingNotification = mapOf(
-            "type" to "TYPING",
-            "userId" to userId,
-            "timestamp" to System.currentTimeMillis()
-        )
-
-        // Broadcast typing indicator to all other users
-        broadcastMessage(typingNotification, excludeSession = session.id)
-    }
-
     private fun handleLeaveMessage(session: WebSocketSession, messageData: Map<*, *>) {
         val userId = userSessions[session.id] ?: "anonymous"
 
         val leaveNotification = mapOf(
-            "type" to "LEAVE",
+            "type" to MessageType.LEAVE.toString(),
             "userId" to userId,
             "message" to "$userId has left the chat",
             "timestamp" to System.currentTimeMillis()
@@ -161,9 +163,22 @@ class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler 
         }
     }
 
+    // START
+    private fun sendToSession(session: WebSocketSession, message: Any) {
+        if (session.isOpen) {
+            val jsonMessage = objectMapper.writeValueAsString(message)
+            try {
+                session.sendMessage(TextMessage(jsonMessage))
+            } catch (e: Exception) {
+                log.error("Error sending message to session ${session.id}", e)
+            }
+        }
+    }
+    // END
+
     private fun sendErrorToSession(session: WebSocketSession, errorMessage: String) {
         val error = mapOf(
-            "type" to "ERROR",
+            "type" to MessageType.ERROR.toString(),
             "message" to errorMessage,
             "timestamp" to System.currentTimeMillis()
         )
@@ -184,7 +199,7 @@ class WebsocketMessageHandler : org.springframework.web.socket.WebSocketHandler 
         val userId = userSessions[session.id]
         if (userId != null) {
             val leaveNotification = mapOf(
-                "type" to "LEAVE",
+                "type" to MessageType.LEAVE.toString(),
                 "userId" to userId,
                 "message" to "$userId has disconnected",
                 "timestamp" to System.currentTimeMillis()

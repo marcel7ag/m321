@@ -8,7 +8,6 @@ enum class MessageType {
     CHAT,
     JOIN,
     LEAVE,
-    TYPING,
     ERROR,
     SYSTEM,
     JOIN_ACK,

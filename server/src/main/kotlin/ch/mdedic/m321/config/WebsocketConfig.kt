@@ -11,8 +11,10 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
  */
 @Configuration
 @EnableWebSocket
-class WebSocketConfig : WebSocketConfigurer {
+class WebSocketConfig(
+    private val websocketMessageHandler: WebsocketMessageHandler
+) : WebSocketConfigurer {
     override fun registerWebSocketHandlers(registry: WebSocketHandlerRegistry) {
-        registry.addHandler(WebsocketMessageHandler(), "/ws").setAllowedOrigins("*")
+        registry.addHandler(websocketMessageHandler, "/ws").setAllowedOrigins("*")
     }
 }
