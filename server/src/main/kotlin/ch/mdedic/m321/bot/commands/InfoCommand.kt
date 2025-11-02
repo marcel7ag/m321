@@ -24,7 +24,7 @@ class InfoCommand : BotCommand {
 
         return buildString {
             appendLine("Client-ID: $sessionId")
-            append("Client-Name: $clientName")
+            append("[SYSTEM] Client-Name: $clientName")
         }
     }
 
