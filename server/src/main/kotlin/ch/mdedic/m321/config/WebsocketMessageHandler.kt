@@ -48,9 +48,9 @@ class WebsocketMessageHandler(
             val messageType = messageData["type"] as? String ?: "CHAT"
 
             when (messageType) {
-                "JOIN" -> handleJoinMessage(session, messageData)
-                "CHAT" -> handleChatMessage(session, messageData)
-                "LEAVE" -> handleLeaveMessage(session, messageData)
+                MessageType.JOIN.toString() -> handleJoinMessage(session, messageData)
+                MessageType.CHAT.toString() -> handleChatMessage(session, messageData)
+                MessageType.LEAVE.toString() -> handleLeaveMessage(session, messageData)
                 else -> {
                     log.warn("Unknown message type: $messageType")
                     sendErrorToSession(session, "Unknown message type: $messageType")
