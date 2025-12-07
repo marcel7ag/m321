@@ -25,14 +25,12 @@ class WebsocketMessageHandler(
     companion object {
         private const val ADMIN_DM_PREFIX = "@serveradmin"
     }
-
-    // Store all active sessions
+    
     private val sessions = ConcurrentHashMap<String, WebSocketSession>()
 
     // Store user information (sessionId -> userId)
     private val userSessions = ConcurrentHashMap<String, String>()
 
-    // Track server start time
     private val serverStartTime: Long = System.currentTimeMillis()
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
@@ -40,7 +38,6 @@ class WebsocketMessageHandler(
         sessions[session.id] = session
         adminManager.registerConnection(session.id)
 // END
-        // Send welcome message
         val welcomeMessage = MessageBuilder.welcome(session.id)
         session.sendMessage(TextMessage(objectMapper.writeValueAsString(welcomeMessage)))
     }
@@ -75,7 +72,6 @@ class WebsocketMessageHandler(
 
         log.info("User $userId joined with session ${session.id}")
 
-        // Try to set as first admin
         adminManager.trySetFirstAdmin(session, userId)
 
         // Broadcast join to all other users
@@ -194,7 +190,6 @@ class WebsocketMessageHandler(
         val leaveNotification = MessageBuilder.leaveNotification(userId)
         broadcastMessage(leaveNotification, excludeSession = session.id)
 // START
-        // Handle admin succession
         adminManager.handleAdminSuccession(
             session.id,
             sessions,

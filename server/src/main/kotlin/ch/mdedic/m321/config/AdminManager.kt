@@ -23,38 +23,22 @@ class AdminManager(
     // Store connection order (sessionId -> connection timestamp)
     private val connectionOrder = ConcurrentHashMap<String, Long>()
 
-    // Store current admin session ID
     private var adminSessionId: String? = null
 
-    /**
-     * Registers a new session connection
-     */
     fun registerConnection(sessionId: String) {
         connectionOrder[sessionId] = System.currentTimeMillis()
     }
 
-    /**
-     * Removes a session from tracking
-     */
     fun unregisterConnection(sessionId: String) {
         connectionOrder.remove(sessionId)
     }
 
-    /**
-     * Checks if a session is the current admin
-     */
     fun isAdmin(sessionId: String): Boolean {
         return adminSessionId == sessionId
     }
 
-    /**
-     * Gets the current admin session ID
-     */
     fun getAdminSessionId(): String? = adminSessionId
 
-    /**
-     * Gets the current admin user ID
-     */
     fun getAdminUserId(userSessions: Map<String, String>): String? {
         return adminSessionId?.let { userSessions[it] }
     }
@@ -100,7 +84,6 @@ class AdminManager(
         userSessions: Map<String, String>,
         broadcastMessage: (Map<String, Any>, String?) -> Unit
     ): String? {
-        // Check if the disconnecting user is the admin
         if (adminSessionId != disconnectingSessionId) {
             return null
         }
