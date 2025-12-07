@@ -13,51 +13,33 @@ import java.util.concurrent.ConcurrentHashMap
 
 @Component
 class WebsocketMessageHandler(
+// START
     private val botCommandHandler: ch.mdedic.m321.bot.BotCommandHandler,
+    private val adminManager: AdminManager,
+    private val objectMapper: ObjectMapper
 ) : org.springframework.web.socket.WebSocketHandler {
     private val log = LoggerFactory.getLogger(this::class.java)
-    private val objectMapper = ObjectMapper()
-// START
+
     companion object {
         private const val ADMIN_DM_PREFIX = "@serveradmin"
     }
-// END
+
+    // Store all active sessions
     private val sessions = ConcurrentHashMap<String, WebSocketSession>()
 
     // Store user information (sessionId -> userId)
     private val userSessions = ConcurrentHashMap<String, String>()
 
-// START
-    // Store connection order (sessionId -> connection timestamp)
-    private val connectionOrder = ConcurrentHashMap<String, Long>()
-
-    private var adminSessionId: String? = null
-
+    // Track server start time
     private val serverStartTime: Long = System.currentTimeMillis()
-
-    fun getServerStartTime(): Long = serverStartTime
-
-    fun getAdminUserId(): String? {
-        return adminSessionId?.let { userSessions[it] }
-    }
-
-    fun getAdminSessionId(): String? = adminSessionId
-
-// END
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
         log.info("WebSocket connection established: ${session.id}")
         sessions[session.id] = session
-// START
-        connectionOrder[session.id] = System.currentTimeMillis()
+        adminManager.registerConnection(session.id)
 // END
-
         // Send welcome message
-        val welcomeMessage = mapOf(
-            "type" to MessageType.SYSTEM.toString(),
-            "message" to "Connected to WebSocket server",
-            "sessionId" to session.id
-        )
+        val welcomeMessage = MessageBuilder.welcome(session.id)
         session.sendMessage(TextMessage(objectMapper.writeValueAsString(welcomeMessage)))
     }
 
@@ -91,43 +73,21 @@ class WebsocketMessageHandler(
 
         log.info("User $userId joined with session ${session.id}")
 
-// START
-        // Set first user as admin
-        if (adminSessionId == null) {
-            adminSessionId = session.id
-            log.info("User $userId (session ${session.id}) is now the admin.")
-
-            // Notify the user they are admin
-            val adminNotification = mapOf(
-                "type" to MessageType.SYSTEM.toString(),
-                "message" to "You are now the admin",
-                "isAdmin" to true,
-                "timestamp" to System.currentTimeMillis()
-            )
-            session.sendMessage(TextMessage(objectMapper.writeValueAsString(adminNotification)))
-        }
-// END
+        // Try to set as first admin
+        adminManager.trySetFirstAdmin(session, userId)
 
         // Broadcast join to all other users
-        val joinNotification = mapOf(
-            "type" to MessageType.JOIN.toString(),
-            "userId" to userId,
-            "message" to "$userId has joined the chat",
-            "isAdmin" to (session.id == adminSessionId),
-            "timestamp" to System.currentTimeMillis()
+        val joinNotification = MessageBuilder.joinNotification(
+            userId = userId,
+            isAdmin = adminManager.isAdmin(session.id)
         )
         broadcastMessage(joinNotification, excludeSession = session.id)
 
-        // Send confirmation of the joining user
-// START
-        val confirmation = mapOf(
-            "type" to MessageType.JOIN_ACK.toString(),
-            "message" to "Successfully joined the chat",
-            "activeUsers" to userSessions.values.toList(),
-            "isAdmin" to (session.id == adminSessionId)
+        // Send confirmation to the joining user
+        val confirmation = MessageBuilder.joinAck(
+            activeUsers = userSessions.values,
+            isAdmin = adminManager.isAdmin(session.id)
         )
-// END
-
         session.sendMessage(TextMessage(objectMapper.writeValueAsString(confirmation)))
     }
 
@@ -137,7 +97,7 @@ class WebsocketMessageHandler(
         val recipientId = messageData["recipientId"] as? String
 // START
         // Check if this is a DM to admin
-        if (content.trim().lowercase().startsWith((ADMIN_DM_PREFIX))) {
+        if (content.trim().lowercase().startsWith(ADMIN_DM_PREFIX)) {
             handleAdminDM(session, userId, content)
             return
         }
@@ -146,30 +106,22 @@ class WebsocketMessageHandler(
         // Check if this is a bot command
         if (botCommandHandler.isBotCommand(content)) {
             val serverData = ServerData(
-                adminUserId = adminSessionId?.let { userSessions[it] },
-                adminSessionId = adminSessionId,
-                serverStartTime = serverStartTime
+                adminUserId = adminManager.getAdminUserId(userSessions),
+                adminSessionId = adminManager.getAdminSessionId(),
+                serverStartTime = serverStartTime,
+                connectedUsers = userSessions.values.toList()
             )
             val botResponse = botCommandHandler.processCommand(session, userId, content, serverData)
-            sendToSession(session, mapOf(
-                "type" to MessageType.SYSTEM.toString(),
-                "message" to botResponse,
-                "timestamp" to System.currentTimeMillis()
-            ))
+            sendToSession(session, MessageBuilder.system(botResponse))
             return
         }
 
-// START
-        val chatMessage = mapOf(
-            "type" to MessageType.CHAT.toString(),
-            "id" to java.util.UUID.randomUUID().toString(),
-            "senderId" to userId,
-            "recipientId" to (recipientId ?: "all"),
-            "content" to content,
-            "isAdmin" to (session.id == adminSessionId),
-            "timestamp" to System.currentTimeMillis()
+        val chatMessage = MessageBuilder.chat(
+            senderId = userId,
+            content = content,
+            recipientId = recipientId ?: "all",
+            isAdmin = adminManager.isAdmin(session.id)
         )
-// END
 
         log.info("Chat message from $userId: $content")
 
@@ -188,30 +140,19 @@ class WebsocketMessageHandler(
         val actualMessage = content.trim().replaceFirst(Regex("@serveradmin\\s*", RegexOption.IGNORE_CASE), "").trim()
 
         if (actualMessage.isEmpty()) {
-            sendToSession(senderSession, mapOf(
-                "type" to MessageType.SYSTEM.toString(),
-                "message" to "Error: Message to admin cannot be empty",
-                "timestamp" to System.currentTimeMillis()
-            ))
+            sendToSession(senderSession, MessageBuilder.system("Error: Message to admin cannot be empty"))
             return
         }
 
+        val adminSessionId = adminManager.getAdminSessionId()
         if (adminSessionId == null) {
-            sendToSession(senderSession, mapOf(
-                "type" to MessageType.SYSTEM.toString(),
-                "message" to "Error: No admin is currently online",
-                "timestamp" to System.currentTimeMillis()
-            ))
+            sendToSession(senderSession, MessageBuilder.system("Error: No admin is currently online"))
             return
         }
 
         // Check if sender is the admin (admin DMing themselves)
-        if (senderSession.id == adminSessionId) {
-            sendToSession(senderSession, mapOf(
-                "type" to MessageType.SYSTEM.toString(),
-                "message" to "Error: You cannot DM yourself (you are the admin)",
-                "timestamp" to System.currentTimeMillis()
-            ))
+        if (adminManager.isAdmin(senderSession.id)) {
+            sendToSession(senderSession, MessageBuilder.system("Error: You cannot DM yourself (you are the admin)"))
             return
         }
 
@@ -219,15 +160,12 @@ class WebsocketMessageHandler(
 
         log.info("Admin DM from $senderId to $adminUserId: $actualMessage")
 
-        // Create DM message
-        val dmMessage = mapOf(
-            "type" to MessageType.PRIVATE_MESSAGE.toString(),
-            "id" to java.util.UUID.randomUUID().toString(),
-            "senderId" to senderId,
-            "recipientId" to adminUserId,
-            "content" to actualMessage,
-            "isAdminDM" to true,
-            "timestamp" to System.currentTimeMillis()
+        // Create DM message for admin
+        val dmMessage = MessageBuilder.privateMessage(
+            senderId = senderId,
+            recipientId = adminUserId,
+            content = actualMessage,
+            isAdminDM = true
         )
 
         // Send to admin
@@ -236,16 +174,13 @@ class WebsocketMessageHandler(
             sendToSession(adminSession, dmMessage)
         }
 
-        // Send confirmation to sender with their message
-        val senderConfirmation = mapOf(
-            "type" to MessageType.PRIVATE_MESSAGE.toString(),
-            "id" to java.util.UUID.randomUUID().toString(),
-            "senderId" to senderId,
-            "recipientId" to adminUserId,
-            "content" to actualMessage,
-            "isAdminDM" to true,
-            "isSent" to true,
-            "timestamp" to System.currentTimeMillis()
+        // Send confirmation to sender
+        val senderConfirmation = MessageBuilder.privateMessage(
+            senderId = senderId,
+            recipientId = adminUserId,
+            content = actualMessage,
+            isAdminDM = true,
+            isSent = true
         )
         sendToSession(senderSession, senderConfirmation)
     }
@@ -254,69 +189,21 @@ class WebsocketMessageHandler(
     private fun handleLeaveMessage(session: WebSocketSession, messageData: Map<*, *>) {
         val userId = userSessions[session.id] ?: "anonymous"
 
-        val leaveNotification = mapOf(
-            "type" to MessageType.LEAVE.toString(),
-            "userId" to userId,
-            "message" to "$userId has left the chat",
-            "timestamp" to System.currentTimeMillis()
+        val leaveNotification = MessageBuilder.leaveNotification(userId)
+        broadcastMessage(leaveNotification, excludeSession = session.id)
+// START
+        // Handle admin succession
+        adminManager.handleAdminSuccession(
+            session.id,
+            sessions,
+            userSessions,
+            ::broadcastMessage
         )
 
-        broadcastMessage(leaveNotification, excludeSession = session.id)
-
-// START
-        handleAdminSuccession(session.id)
-// END
-
         userSessions.remove(session.id)
-
-// START
-        connectionOrder.remove(session.id)
-// END
-    }
-// START
-    private fun handleAdminSuccession(disconnectingSessionId: String) {
-        // Check if the disconnecting user is the admin
-        if (adminSessionId == disconnectingSessionId) {
-            log.info("Admin is disconnecting, finding next admin...")
-
-            // Find the next oldest connected user
-            val nextAdmin = connectionOrder
-                .filter { it.key != disconnectingSessionId && sessions[it.key]?.isOpen == true }
-                .minByOrNull { it.value }
-
-            if (nextAdmin != null) {
-                adminSessionId = nextAdmin.key
-                val newAdminUserId = userSessions[nextAdmin.key] ?: "anonymous"
-                log.info("User $newAdminUserId (session ${nextAdmin.key}) is now the admin")
-
-                // Notify the new admin
-                val newAdminSession = sessions[nextAdmin.key]
-                if (newAdminSession != null && newAdminSession.isOpen) {
-                    val adminNotification = mapOf(
-                        "type" to MessageType.SYSTEM.toString(),
-                        "message" to "You are now the admin",
-                        "isAdmin" to true,
-                        "timestamp" to System.currentTimeMillis()
-                    )
-                    newAdminSession.sendMessage(TextMessage(objectMapper.writeValueAsString(adminNotification)))
-                }
-
-                // Broadcast admin change to all users
-                val adminChangeNotification = mapOf(
-                    "type" to MessageType.SYSTEM.toString(),
-                    "message" to "$newAdminUserId is now the admin",
-                    "timestamp" to System.currentTimeMillis()
-                )
-                broadcastMessage(adminChangeNotification, excludeSession = nextAdmin.key)
-            } else {
-                // No more users, reset admin
-                adminSessionId = null
-                log.info("No users left, admin reset")
-            }
-        }
+        adminManager.unregisterConnection(session.id)
     }
 // END
-
     private fun broadcastMessage(message: Any, excludeSession: String? = null) {
         val jsonMessage = objectMapper.writeValueAsString(message)
         sessions.values.forEach { session ->
@@ -354,11 +241,7 @@ class WebsocketMessageHandler(
     }
 
     private fun sendErrorToSession(session: WebSocketSession, errorMessage: String) {
-        val error = mapOf(
-            "type" to MessageType.ERROR.toString(),
-            "message" to errorMessage,
-            "timestamp" to System.currentTimeMillis()
-        )
+        val error = MessageBuilder.error(errorMessage)
         try {
             session.sendMessage(TextMessage(objectMapper.writeValueAsString(error)))
         } catch (e: Exception) {
@@ -375,18 +258,23 @@ class WebsocketMessageHandler(
 
         val userId = userSessions[session.id]
         if (userId != null) {
-            val leaveNotification = mapOf(
-                "type" to MessageType.LEAVE.toString(),
-                "userId" to userId,
-                "message" to "$userId has disconnected",
-                "timestamp" to System.currentTimeMillis()
-            )
+            val leaveNotification = MessageBuilder.disconnectNotification(userId)
             broadcastMessage(leaveNotification, excludeSession = session.id)
         }
+// START
+        // Handle admin succession before cleanup
+        adminManager.handleAdminSuccession(
+            session.id,
+            sessions,
+            userSessions,
+            ::broadcastMessage
+        )
 
         sessions.remove(session.id)
         userSessions.remove(session.id)
+        adminManager.unregisterConnection(session.id)
     }
+// END
 
     override fun supportsPartialMessages(): Boolean {
         return false

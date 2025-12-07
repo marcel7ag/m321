@@ -19,7 +19,9 @@ class InfoCommand : BotCommand {
         session: WebSocketSession,
         userId: String,
         args: List<String>,
+// START
         serverData: ServerData
+// END
     ): String {
         val sessionId = session.id
         val clientName = if (userId.isNotBlank() && userId != "anonymous") {
@@ -35,10 +37,21 @@ class InfoCommand : BotCommand {
         val uptimeMillis = System.currentTimeMillis() - serverData.serverStartTime
         val uptimeFormatted = formatUptime(uptimeMillis)
 
+        // Get all connected users from serverData
+        val connectedUsers = serverData.connectedUsers
+        val userCount = connectedUsers.size
+
         return buildString {
             appendLine("=== Server Info ===")
-            appendLine("Client-Name: $clientName")
-            appendLine("Client-ID: $sessionId")
+            appendLine("Connected Users: $userCount")
+            if (connectedUsers.isNotEmpty()) {
+                connectedUsers.forEachIndexed { index, user ->
+                    val isAdmin = user == adminUserId
+                    val badge = if (isAdmin) " [ADMIN]" else ""
+                    appendLine("  ${index + 1}. $user$badge")
+                    appendLine("     Session-ID: $sessionId")
+                }
+            }
             appendLine("---")
             appendLine("Admin: $adminUserId")
             appendLine("Admin Session-ID: $adminSessionId")

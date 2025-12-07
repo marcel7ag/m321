@@ -53,7 +53,9 @@ class BotCommandHandler(
         session: WebSocketSession,
         userId: String,
         message: String,
+// START
         serverData: ServerData = ServerData()
+// END
     ): String {
         return try {
             // Remove @server prefix and split into command and args
@@ -71,7 +73,9 @@ class BotCommandHandler(
             val command = commandMap[commandName]
             if (command != null) {
                 log.info("Executing bot command '$commandName' for user $userId (session: ${session.id})")
+// START
                 command.execute(session, userId, args, serverData)
+// END
             } else {
                 "Error: Unknown command '$commandName'. Available commands: ${commandMap.keys.joinToString(", ")}"
             }

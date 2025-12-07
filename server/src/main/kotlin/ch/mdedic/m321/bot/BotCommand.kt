@@ -22,7 +22,9 @@ interface BotCommand {
         session: WebSocketSession,
         userId: String,
         args: List<String>,
+// START
         serverData: ServerData = ServerData()
+// END
     ): String
 
     /**
