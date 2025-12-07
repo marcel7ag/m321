@@ -13,13 +13,15 @@ import java.util.concurrent.ConcurrentHashMap
 
 @Component
 class WebsocketMessageHandler(
-// START
     private val botCommandHandler: ch.mdedic.m321.bot.BotCommandHandler,
+// START
     private val adminManager: AdminManager,
+// END
     private val objectMapper: ObjectMapper
 ) : org.springframework.web.socket.WebSocketHandler {
     private val log = LoggerFactory.getLogger(this::class.java)
 
+// START
     companion object {
         private const val ADMIN_DM_PREFIX = "@serveradmin"
     }
