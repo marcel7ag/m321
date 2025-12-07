@@ -1,5 +1,6 @@
 package ch.mdedic.m321.config
 
+import ch.mdedic.m321.bot.ServerData
 import com.fasterxml.jackson.databind.ObjectMapper
 import dtos.MessageType
 import org.slf4j.LoggerFactory
@@ -144,6 +145,11 @@ class WebsocketMessageHandler(
 
         // Check if this is a bot command
         if (botCommandHandler.isBotCommand(content)) {
+            val serverData = ServerData(
+                adminUserId = adminSessionId?.let { userSessions[it] },
+                adminSessionId = adminSessionId,
+                serverStartTime = serverStartTime
+            )
             val botResponse = botCommandHandler.processCommand(session, userId, content)
             sendToSession(session, mapOf(
                 "type" to MessageType.SYSTEM.toString(),

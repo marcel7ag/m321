@@ -15,9 +15,15 @@ interface BotCommand {
      * @param session The WebSocket session of the user who invoked the command
      * @param userId The ID/name of the user who invoked the command
      * @param args Additional arguments passed to the command
+     * @param serverData Additional server data that might be needed by the command
      * @return The response message to be sent back to the user
      */
-    fun execute(session: WebSocketSession, userId: String, args: List<String>): String
+    fun execute(
+        session: WebSocketSession,
+        userId: String,
+        args: List<String>,
+        serverData: ServerData = ServerData()
+    ): String
 
     /**
      * Returns the unique name of the command

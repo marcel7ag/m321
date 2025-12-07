@@ -1,7 +1,7 @@
 package ch.mdedic.m321.bot.commands
 
 import ch.mdedic.m321.bot.BotCommand
-import ch.mdedic.m321.config.WebsocketMessageHandler
+import ch.mdedic.m321.bot.ServerData
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.WebSocketSession
 import java.util.concurrent.TimeUnit
@@ -13,9 +13,14 @@ import java.util.concurrent.TimeUnit
  * @author Marcel Dedic
  */
 @Component
-class InfoCommand(private val messageHandler: WebsocketMessageHandler) : BotCommand {
+class InfoCommand : BotCommand {
 
-    override fun execute(session: WebSocketSession, userId: String, args: List<String>): String {
+    override fun execute(
+        session: WebSocketSession,
+        userId: String,
+        args: List<String>,
+        serverData: ServerData
+    ): String {
         val sessionId = session.id
         val clientName = if (userId.isNotBlank() && userId != "anonymous") {
             userId
@@ -24,10 +29,10 @@ class InfoCommand(private val messageHandler: WebsocketMessageHandler) : BotComm
         }
 
 // START
-        val adminUserId = messageHandler.getAdminUserId() ?: "No admin online"
-        val adminSessionId = messageHandler.getAdminSessionId() ?: "N/A"
+        val adminUserId = serverData.adminUserId ?: "No admin online"
+        val adminSessionId = serverData.adminSessionId ?: "N/A"
 
-        val uptimeMillis = System.currentTimeMillis() - messageHandler.getServerStartTime()
+        val uptimeMillis = System.currentTimeMillis() - serverData.serverStartTime
         val uptimeFormatted = formatUptime(uptimeMillis)
 
         return buildString {
