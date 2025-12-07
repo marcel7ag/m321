@@ -150,7 +150,7 @@ class WebsocketMessageHandler(
                 adminSessionId = adminSessionId,
                 serverStartTime = serverStartTime
             )
-            val botResponse = botCommandHandler.processCommand(session, userId, content)
+            val botResponse = botCommandHandler.processCommand(session, userId, content, serverData)
             sendToSession(session, mapOf(
                 "type" to MessageType.SYSTEM.toString(),
                 "message" to botResponse,

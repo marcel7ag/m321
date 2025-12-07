@@ -46,9 +46,15 @@ class BotCommandHandler(
      * @param session The WebSocket session of the user
      * @param userId The ID/name of the user
      * @param message The full message content
+     * @param serverData Server data to pass to commands (optional)
      * @return The response to send back to the user
      */
-    fun processCommand(session: WebSocketSession, userId: String, message: String): String {
+    fun processCommand(
+        session: WebSocketSession,
+        userId: String,
+        message: String,
+        serverData: ServerData = ServerData()
+    ): String {
         return try {
             // Remove @server prefix and split into command and args
             val content = message.trim().removePrefix(BOT_COMMAND_PREFIX).trim()
@@ -65,7 +71,7 @@ class BotCommandHandler(
             val command = commandMap[commandName]
             if (command != null) {
                 log.info("Executing bot command '$commandName' for user $userId (session: ${session.id})")
-                command.execute(session, userId, args)
+                command.execute(session, userId, args, serverData)
             } else {
                 "Error: Unknown command '$commandName'. Available commands: ${commandMap.keys.joinToString(", ")}"
             }
