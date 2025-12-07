@@ -1,4 +1,3 @@
-// START
 package ch.mdedic.m321.bot
 
 import org.slf4j.LoggerFactory
@@ -19,6 +18,12 @@ class BotCommandHandler(
     private val log = LoggerFactory.getLogger(this::class.java)
     private val commandMap: Map<String, BotCommand>
 
+// START
+    companion object {
+        const val BOT_COMMAND_PREFIX = "@server"
+    }
+// END
+
     init {
         // Build a map of command names to command instances for fast lookup
         commandMap = commands.associateBy { it.getCommandName() }
@@ -32,7 +37,7 @@ class BotCommandHandler(
      * @return true if the message is a bot command, false otherwise
      */
     fun isBotCommand(message: String): Boolean {
-        return message.trim().startsWith("@server")
+        return message.trim().startsWith(BOT_COMMAND_PREFIX)
     }
 
     /**
@@ -46,7 +51,7 @@ class BotCommandHandler(
     fun processCommand(session: WebSocketSession, userId: String, message: String): String {
         return try {
             // Remove @server prefix and split into command and args
-            val content = message.trim().removePrefix("@server").trim()
+            val content = message.trim().removePrefix(BOT_COMMAND_PREFIX).trim()
             val parts = content.split(Regex("\\s+"))
 
             if (parts.isEmpty() || parts[0].isBlank()) {
@@ -79,4 +84,3 @@ class BotCommandHandler(
         return commandMap.keys.toList()
     }
 }
-// END

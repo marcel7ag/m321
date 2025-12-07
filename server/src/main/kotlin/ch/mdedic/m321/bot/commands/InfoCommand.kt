@@ -1,18 +1,19 @@
-// START
 package ch.mdedic.m321.bot.commands
 
 import ch.mdedic.m321.bot.BotCommand
+import ch.mdedic.m321.config.WebsocketMessageHandler
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.WebSocketSession
+import java.util.concurrent.TimeUnit
 
 /**
- * Bot command that returns client information
- * Returns the registered client name (if available) and the session ID
+ * Bot command that returns client information, admin information and server uptime
+ * Returns the registered client name (if available), session ID, current admin, and server uptime
  *
  * @author Marcel Dedic
  */
 @Component
-class InfoCommand : BotCommand {
+class InfoCommand(private val messageHandler: WebsocketMessageHandler) : BotCommand {
 
     override fun execute(session: WebSocketSession, userId: String, args: List<String>): String {
         val sessionId = session.id
@@ -22,12 +23,39 @@ class InfoCommand : BotCommand {
             "anonym"
         }
 
+// START
+        val adminUserId = messageHandler.getAdminUserId() ?: "No admin online"
+        val adminSessionId = messageHandler.getAdminSessionId() ?: "N/A"
+
+        val uptimeMillis = System.currentTimeMillis() - messageHandler.getServerStartTime()
+        val uptimeFormatted = formatUptime(uptimeMillis)
+
         return buildString {
+            appendLine("=== Server Info ===")
+            appendLine("Client-Name: $clientName")
             appendLine("Client-ID: $sessionId")
-            append("[SYSTEM] Client-Name: $clientName")
+            appendLine("---")
+            appendLine("Admin: $adminUserId")
+            appendLine("Admin Session-ID: $adminSessionId")
+            appendLine("---")
+            append("Server Uptime: $uptimeFormatted")
         }
     }
 
+    private fun formatUptime(uptimeMillis: Long): String {
+        val days = TimeUnit.MILLISECONDS.toDays(uptimeMillis)
+        val hours = TimeUnit.MILLISECONDS.toHours(uptimeMillis) % 24
+        val minutes = TimeUnit.MILLISECONDS.toMinutes(uptimeMillis) % 60
+        val seconds = TimeUnit.MILLISECONDS.toSeconds(uptimeMillis) % 60
+
+        return when {
+            days > 0 -> "${days}d ${hours}h ${minutes}m ${seconds}s"
+            hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
+            minutes > 0 -> "${minutes}m ${seconds}s"
+            else -> "${seconds}s"
+        }
+    }
+// END
+
     override fun getCommandName(): String = "info"
 }
-// END
