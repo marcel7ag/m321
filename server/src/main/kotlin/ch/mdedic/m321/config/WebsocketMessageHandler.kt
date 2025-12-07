@@ -95,7 +95,10 @@ class WebsocketMessageHandler(
         val recipientId = messageData["recipientId"] as? String
 // START
         // Check if this is a DM to admin
-        if (content.trim().lowercase().startsWith(ADMIN_DM_PREFIX)) {
+        val trimmedContent = content.trim()
+        if (trimmedContent.lowercase().startsWith(ADMIN_DM_PREFIX) &&
+            (trimmedContent.length == ADMIN_DM_PREFIX.length ||
+                    trimmedContent.getOrNull(ADMIN_DM_PREFIX.length)?.isWhitespace() == true)) {
             handleAdminDM(session, userId, content)
             return
         }
