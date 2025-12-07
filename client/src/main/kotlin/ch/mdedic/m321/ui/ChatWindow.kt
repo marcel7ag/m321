@@ -154,8 +154,18 @@ class ChatWindow : JFrame("Chat Client"), ChatWebSocketClient.ConnectionListener
             if (it.isOpen) {
                 it.sendChatMessage(username, message)
 
-                val time = getCurrentTime()
-                displayMessage("[$time] $username: $message")
+// START
+                // Don't display @serveradmin or @server messages locally
+                // They will be handled by the server response
+                val isAdminDM = message.trim().lowercase().startsWith("@serveradmin")
+                val isBotCommand = message.trim().startsWith("@server")
+
+                if (!isAdminDM && !isBotCommand) {
+                    // Only display regular chat messages locally
+                    val time = getCurrentTime()
+                    displayMessage("[$time] $username: $message")
+                }
+// END
                 messageInput.text = ""
             }
         }

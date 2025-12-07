@@ -25,6 +25,9 @@ class MessageHandler(
                 MessageType.JOIN_ACK.toString() -> handleJoinAck(data)
                 MessageType.LEAVE.toString() -> handleLeaveMessage(data)
                 MessageType.CHAT.toString() -> handleChatMessage(data)
+// START
+                MessageType.PRIVATE_MESSAGE.toString() -> handlePrivateMessage(data)
+// END
                 MessageType.ERROR.toString() -> handleErrorMessage(data)
             }
         } catch (e: Exception) {
@@ -70,6 +73,30 @@ class MessageHandler(
         val time = formatTimestamp(timestamp)
         onDisplayMessage("[$time] $senderId: $content")
     }
+
+// START
+    private fun handlePrivateMessage(data: Map<String, Any>) {
+        val senderId = data["senderId"] as? String ?: "Unknown"
+        val recipientId = data["recipientId"] as? String ?: "Unknown"
+        val content = data["content"] as? String ?: ""
+        val timestamp = (data["timestamp"] as? Number)?.toLong()
+        val isAdminDM = data["isAdminDM"] as? Boolean ?: false
+        val isSent = data["isSent"] as? Boolean ?: false
+
+        val time = formatTimestamp(timestamp)
+
+        // If this is a sent confirmation (we sent the DM), display it differently
+        if (isSent) {
+            onDisplayMessage("[$time] [DM to Admin] You: $content")
+        } else if (isAdminDM) {
+            // We received a DM (we are the admin)
+            onDisplayMessage("[$time] [DM from $senderId] $content")
+        } else {
+            // Regular private message
+            onDisplayMessage("[$time] [Private from $senderId] $content")
+        }
+    }
+// END
 
     private fun handleErrorMessage(data: Map<String, Any>) {
         val content = data["message"] as? String ?: "Unknown error"
